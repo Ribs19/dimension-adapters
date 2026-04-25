@@ -10,7 +10,7 @@ jobs:
     - name: Get Node.js
       uses: actions/setup-node@v1
       with:
-        node-version: '16'
+        node-version: '24'
     - run: npm ci
     - name: Checking adapters
       run: npm run ts-check
