@@ -25,33 +25,53 @@ jobs:
         url="$REFRESH_URL"
         max_attempts=5
         delay=5
+        max_delay=60
         for attempt in $(seq 1 $max_attempts); do
           echo "Attempt $attempt/$max_attempts: $url"
           resp_file=$(mktemp)
+          hdr_file=$(mktemp)
+
           if [ -n "${SERVICE_TOKEN:-}" ]; then
-            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 30 -H "Authorization: Bearer $SERVICE_TOKEN" -o "$resp_file" "$url" || echo "000")
+            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 30 -H "Authorization: Bearer $SERVICE_TOKEN" -D "$hdr_file" -o "$resp_file" "$url" || echo "000")
           else
-            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 30 -o "$resp_file" "$url" || echo "000")
+            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 30 -D "$hdr_file" -o "$resp_file" "$url" || echo "000")
           fi
 
           if [[ "$status" =~ ^2[0-9]{2}$ ]]; then
             echo "Success (HTTP $status)"
             head -c 1024 "$resp_file" || true
-            rm -f "$resp_file"
+            rm -f "$resp_file" "$hdr_file"
             break
           fi
 
           echo "Request failed with HTTP $status"
           head -c 1024 "$resp_file" || true
-          rm -f "$resp_file" || true
+
+          # Try to honor Retry-After header (only numeric values). Fallback to jittered exponential backoff.
+          retry_after=$(awk 'BEGIN{IGNORECASE=1} /^Retry-After:/ {print $2; exit}' "$hdr_file" | tr -d '\r' || true)
+          if [[ "$retry_after" =~ ^[0-9]+$ ]]; then
+            if [ "$retry_after" -lt "$max_delay" ]; then
+              next_delay=$retry_after
+            else
+              next_delay=$max_delay
+            fi
+          else
+            jitter=$(( RANDOM % delay ))
+            next_delay=$(( delay + jitter ))
+            if [ "$next_delay" -gt "$max_delay" ]; then
+              next_delay=$max_delay
+            fi
+          fi
+
+          rm -f "$resp_file" "$hdr_file" || true
 
           if [ "$attempt" -eq "$max_attempts" ]; then
             echo "Max attempts reached ($max_attempts). Failing the step."
             exit 1
           fi
 
-          echo "Retrying in ${delay}s..."
-          sleep $delay
+          echo "Retrying in ${next_delay}s..."
+          sleep $next_delay
           delay=$(( delay * 2 ))
         done
 
@@ -64,32 +84,51 @@ jobs:
         url="$REBUILD_URL"
         max_attempts=5
         delay=5
+        max_delay=60
         for attempt in $(seq 1 $max_attempts); do
           echo "Attempt $attempt/$max_attempts: $url"
           resp_file=$(mktemp)
+          hdr_file=$(mktemp)
+
           if [ -n "${SERVICE_TOKEN:-}" ]; then
-            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 60 -H "Authorization: Bearer $SERVICE_TOKEN" -o "$resp_file" "$url" || echo "000")
+            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 60 -H "Authorization: Bearer $SERVICE_TOKEN" -D "$hdr_file" -o "$resp_file" "$url" || echo "000")
           else
-            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 60 -o "$resp_file" "$url" || echo "000")
+            status=$(curl --silent --show-error --write-out "%{http_code}" --max-time 60 -D "$hdr_file" -o "$resp_file" "$url" || echo "000")
           fi
 
           if [[ "$status" =~ ^2[0-9]{2}$ ]]; then
             echo "Success (HTTP $status)"
             head -c 1024 "$resp_file" || true
-            rm -f "$resp_file"
+            rm -f "$resp_file" "$hdr_file"
             break
           fi
 
           echo "Request failed with HTTP $status"
           head -c 1024 "$resp_file" || true
-          rm -f "$resp_file" || true
+
+          retry_after=$(awk 'BEGIN{IGNORECASE=1} /^Retry-After:/ {print $2; exit}' "$hdr_file" | tr -d '\r' || true)
+          if [[ "$retry_after" =~ ^[0-9]+$ ]]; then
+            if [ "$retry_after" -lt "$max_delay" ]; then
+              next_delay=$retry_after
+            else
+              next_delay=$max_delay
+            fi
+          else
+            jitter=$(( RANDOM % delay ))
+            next_delay=$(( delay + jitter ))
+            if [ "$next_delay" -gt "$max_delay" ]; then
+              next_delay=$max_delay
+            fi
+          fi
+
+          rm -f "$resp_file" "$hdr_file" || true
 
           if [ "$attempt" -eq "$max_attempts" ]; then
             echo "Max attempts reached ($max_attempts). Failing the step."
             exit 1
           fi
 
-          echo "Retrying in ${delay}s..."
-          sleep $delay
+          echo "Retrying in ${next_delay}s..."
+          sleep $next_delay
           delay=$(( delay * 2 ))
         done
