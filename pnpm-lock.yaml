@@ -323,6 +323,7 @@ packages:
 
   '@clickhouse/client-common@1.15.0':
     resolution: {integrity: sha512-/1BXaNNsBzH2w5ALWiH6M9zS+cJwlM9uMnMj9e8ETwvDjJzO+nIYlyxzp8Prc+9pEDZ5iAilZ4F8c0YVCzzNaA==}
+    deprecated: 'Deprecated: import from @clickhouse/client or @clickhouse/client-web instead.'
 
   '@clickhouse/client@1.15.0':
     resolution: {integrity: sha512-QmW+p4c/r0oa3X6Un6lcBs4GZtJEQUdvf//x8GeqM5ru6m4oIUg3WwvermP3HE31kpEGoFOQfKbMN5ooR5gvNw==}
